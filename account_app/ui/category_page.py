@@ -15,6 +15,20 @@ from PySide6.QtWidgets import (
 
 from account_app import db
 
+# 改图标弹窗里的候选 emoji（带中文名，方便挑选）
+EMOJI_CHOICES = [
+    "🍜 餐饮", "🍳 早餐", "🍚 午餐", "🥡 外卖", "🧋 饮料", "🥬 买菜", "🍻 聚餐",
+    "🚌 公交", "🚇 地铁", "🚕 打车", "⛽ 加油", "🅿️ 停车", "✈️ 旅行",
+    "🏠 居住", "💡 水电", "🧾 缴费", "📶 网络", "🧹 日用", "🔧 维修",
+    "🛍️ 购物", "👕 衣服", "🧴 日用品", "📱 数码", "💄 美妆",
+    "🎮 游戏", "🎬 电影", "🧳 旅游", "🏃 运动", "⭐ 订阅",
+    "💊 医药", "🩺 体检", "💪 保健",
+    "📚 学习", "📖 买书", "🎓 课程", "📝 考试",
+    "🎁 礼物", "🧧 红包", "❤️ 孝敬",
+    "💰 收入", "📈 理财", "💼 兼职", "🪙 零钱",
+    "📦 其他", "🐱 宠物", "👶 育儿", "🚗 汽车", "📷 摄影", "🎵 音乐", "☕ 咖啡", "🍰 甜点",
+]
+
 
 class CategoryPage(QWidget):
     # 分类有增删改时发出，供其他页面刷新分类下拉框
@@ -37,13 +51,15 @@ class CategoryPage(QWidget):
         self.add_top_btn = QPushButton("➕ 加一级分类")
         self.add_sub_btn = QPushButton("➕ 加二级小类")
         self.rename_btn = QPushButton("✏️ 改名")
+        self.icon_btn = QPushButton("🎨 改图标")
         self.delete_btn = QPushButton("🗑️ 删除")
         self.delete_btn.setObjectName("danger")  # 删除是危险操作，用红色
         self.add_top_btn.clicked.connect(self._add_top)
         self.add_sub_btn.clicked.connect(self._add_sub)
         self.rename_btn.clicked.connect(self._rename)
+        self.icon_btn.clicked.connect(self._change_icon)
         self.delete_btn.clicked.connect(self._delete)
-        for b in (self.add_sub_btn, self.rename_btn, self.delete_btn):
+        for b in (self.add_sub_btn, self.rename_btn, self.icon_btn, self.delete_btn):
             b.setEnabled(False)
 
         self.hint = QLabel(
@@ -59,6 +75,7 @@ class CategoryPage(QWidget):
         right.addWidget(self.add_top_btn)
         right.addWidget(self.add_sub_btn)
         right.addWidget(self.rename_btn)
+        right.addWidget(self.icon_btn)
         right.addWidget(self.delete_btn)
         right.addStretch()
 
@@ -78,10 +95,10 @@ class CategoryPage(QWidget):
         selected_id = self._selected_id()
         self.tree.clear()
         for top in db.get_top_categories():
-            item = QTreeWidgetItem([top["name"]])
+            item = QTreeWidgetItem([self._label(top["icon"], top["name"])])
             item.setData(0, Qt.ItemDataRole.UserRole, {"id": top["id"], "kind": top["kind"]})
             for sub in db.get_sub_categories(top["id"]):
-                child = QTreeWidgetItem([sub["name"]])
+                child = QTreeWidgetItem([self._label(sub["icon"], sub["name"])])
                 child.setData(
                     0,
                     Qt.ItemDataRole.UserRole,
@@ -117,6 +134,7 @@ class CategoryPage(QWidget):
         item = self.tree.currentItem()
         has_sel = item is not None
         self.rename_btn.setEnabled(has_sel)
+        self.icon_btn.setEnabled(has_sel)
         self.delete_btn.setEnabled(has_sel)
         # 只有选中一级大类时才能加二级小类
         is_top = has_sel and item.parent() is None
@@ -165,7 +183,8 @@ class CategoryPage(QWidget):
         category_id = self._selected_id()
         if category_id is None:
             return
-        old_name = self.tree.currentItem().text(0)
+        # 树的文本带图标前缀，改名弹窗里只给纯名字
+        old_name = self.tree.currentItem().text(0).split(" ", 1)[-1]
         name = self._ask_name("改名", "新名称：", default=old_name)
         if not name or name == old_name:
             return
@@ -173,6 +192,32 @@ class CategoryPage(QWidget):
         self._reload_tree()
         self._show_feedback(f"✓ 已改名：「{old_name}」→「{name}」")
         self.changed.emit()
+
+    def _change_icon(self) -> None:
+        """弹窗选择一个 emoji 作为当前分类的图标。"""
+        category_id = self._selected_id()
+        if category_id is None:
+            return
+        item = self.tree.currentItem()
+        name = item.text(0).split(" ", 1)[-1]
+        dlg = QInputDialog(self)
+        dlg.setWindowTitle("改图标")
+        dlg.setLabelText(f"为「{name}」选择一个图标：")
+        dlg.setComboBoxItems(EMOJI_CHOICES)
+        dlg.setOkButtonText("确定")
+        dlg.setCancelButtonText("取消")
+        if dlg.exec() != QInputDialog.DialogCode.Accepted:
+            return
+        icon = dlg.textValue().split(" ", 1)[0]  # "🍜 餐饮" -> "🍜"
+        db.update_category_icon(category_id, icon)
+        self._reload_tree()
+        self._show_feedback(f"✓ 「{name}」的图标已改为 {icon}")
+        self.changed.emit()
+
+    @staticmethod
+    def _label(icon: str, name: str) -> str:
+        """「图标 + 空格 + 名字」的显示文本（无图标时只有名字）。"""
+        return f"{icon} {name}" if icon else name
 
     def _delete(self) -> None:
         category_id = self._selected_id()

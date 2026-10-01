@@ -127,11 +127,11 @@ class ExpenseForm(QWidget):
         self._load_categories()
 
     def _load_categories(self) -> None:
-        """按当前收支类型加载分类到两个下拉框。"""
+        """按当前收支类型加载分类到两个下拉框（带图标显示）。"""
         self.top_cat.clear()
         self.sub_cat.clear()
         for cat in db.get_top_categories(self._kind()):
-            self.top_cat.addItem(cat["name"], cat["id"])
+            self.top_cat.addItem(self._cat_label(cat), cat["id"])
         self._on_top_changed()  # 联动刷新二级分类
 
     def _on_top_changed(self) -> None:
@@ -139,7 +139,13 @@ class ExpenseForm(QWidget):
         top_id = self.top_cat.currentData()
         self.sub_cat.clear()
         for cat in db.get_sub_categories(top_id):
-            self.sub_cat.addItem(cat["name"], cat["id"])
+            self.sub_cat.addItem(self._cat_label(cat), cat["id"])
+
+    @staticmethod
+    def _cat_label(cat) -> str:
+        """「图标 + 空格 + 名字」的显示文本（无图标时只有名字）。"""
+        icon = cat["icon"] or ""
+        return f"{icon} {cat['name']}" if icon else cat["name"]
 
     # ---------- 保存 ----------
 

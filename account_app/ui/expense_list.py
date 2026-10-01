@@ -137,7 +137,7 @@ class ExpenseList(QWidget):
     def _load_categories(self) -> None:
         self.top_filter.addItem("全部大类", None)
         for cat in db.get_top_categories():
-            self.top_filter.addItem(cat["name"], cat["id"])
+            self.top_filter.addItem(self._cat_label(cat), cat["id"])
         self.sub_filter.addItem("全部小类", None)
         self._on_top_filter_changed()
 
@@ -148,11 +148,17 @@ class ExpenseList(QWidget):
         self.sub_filter.addItem("全部小类", None)
         if top_id is not None:
             for cat in db.get_sub_categories(top_id):
-                self.sub_filter.addItem(cat["name"], cat["id"])
+                self.sub_filter.addItem(self._cat_label(cat), cat["id"])
             self.sub_filter.setEnabled(True)
         else:
             self.sub_filter.setEnabled(False)
         self.refresh()
+
+    @staticmethod
+    def _cat_label(cat) -> str:
+        """「图标 + 空格 + 名字」的显示文本（无图标时只有名字）。"""
+        icon = cat["icon"] or ""
+        return f"{icon} {cat['name']}" if icon else cat["name"]
 
     def _on_date_check(self, checked: bool) -> None:
         self.date_from.setEnabled(checked)

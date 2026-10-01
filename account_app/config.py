@@ -3,7 +3,7 @@
 from pathlib import Path
 
 APP_NAME = "Account 记账"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 
 # 项目根目录（main.py 所在文件夹）
 BASE_DIR = Path(__file__).resolve().parent.parent

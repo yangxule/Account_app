@@ -42,6 +42,22 @@ def _cat_id(top_name: str, sub_name: str) -> int:
     return sub["id"]
 
 
+def _cat_icon(category_id: int) -> str:
+    """按 id 查分类图标。"""
+    conn = db.get_connection()
+    row = conn.execute("SELECT icon FROM categories WHERE id=?", (category_id,)).fetchone()
+    conn.close()
+    return row["icon"]
+
+
+def _combo_find(combo, keyword: str) -> int:
+    """在下拉框里按文字包含关系找选项（文字带 emoji 前缀，精确匹配会失败）。"""
+    for i in range(combo.count()):
+        if keyword in combo.itemText(i):
+            return i
+    return -1
+
+
 def _test_migration(old_db_path: Path) -> None:
     """旧版数据库（无 kind 列）升级后应自动补齐，老数据不受影响。"""
     conn = sqlite3_mod.connect(old_db_path)
@@ -77,12 +93,17 @@ def _test_migration(old_db_path: Path) -> None:
     cat_cols = {r["name"] for r in conn.execute("PRAGMA table_info(categories)")}
     exp_cols = {r["name"] for r in conn.execute("PRAGMA table_info(expenses)")}
     assert "kind" in cat_cols and "kind" in exp_cols, "kind 列未补齐"
+    assert "icon" in cat_cols, "icon 列未补齐"
     n_income = conn.execute("SELECT COUNT(*) FROM categories WHERE kind='income'").fetchone()[0]
     assert n_income == 7, f"收入分类应为 7 个，实际 {n_income}"
     row = conn.execute("SELECT * FROM expenses").fetchone()
     assert row["kind"] == "expense" and row["note"] == "老账", "老数据被破坏"
+    # 老库里的分类没有图标，升级后应按名字自动补上内置图标
+    top_icon = conn.execute("SELECT icon FROM categories WHERE name='餐饮'").fetchone()["icon"]
+    sub_icon = conn.execute("SELECT icon FROM categories WHERE name='早餐'").fetchone()["icon"]
+    assert top_icon == "🍜" and sub_icon == "🍳", f"老库分类图标未回填：{top_icon}/{sub_icon}"
     conn.close()
-    print("  ✅ 旧库升级正常：新列补齐、收入分类就位、老账原样保留")
+    print("  ✅ 旧库升级正常：新列补齐、分类图标回填、老账原样保留")
 
 
 def main() -> None:
@@ -125,7 +146,7 @@ def main() -> None:
         check("日期 09-30 ~ 10-01", [id_a, id_b, id_d])
         page.date_check.setChecked(False)
 
-        page.top_filter.setCurrentIndex(page.top_filter.findText("交通"))
+        page.top_filter.setCurrentIndex(_combo_find(page.top_filter, "交通"))
         page.refresh()
         check("分类筛选「交通」", [id_b])
         page.top_filter.setCurrentIndex(0)
@@ -151,11 +172,12 @@ def main() -> None:
 
         # ---- 记一笔页面的收支开关测试 ----
         form = ExpenseForm()
-        assert form.top_cat.currentText() == "餐饮"
+        assert form.top_cat.currentText() == "🍜 餐饮", f"实际：{form.top_cat.currentText()}"
+        assert form.sub_cat.currentText() == "🍳 早餐"
         form.kind_income.setChecked(True)
-        assert form.top_cat.currentText() == "收入"
-        assert form.sub_cat.currentText() == "工资"
-        print("  ✅ 记一笔收支开关正常：切到收入自动换收入分类")
+        assert form.top_cat.currentText() == "💰 收入"
+        assert form.sub_cat.currentText() == "💰 工资"
+        print("  ✅ 记一笔收支开关正常：切到收入自动换收入分类（含图标）")
 
         # ---- 统计查询与页面测试 ----
         from account_app.ui.stats_page import StatsPage
@@ -181,8 +203,8 @@ def main() -> None:
         # ---- 编辑弹窗测试（支出 + 收入各一次） ----
         dlg = ExpenseDialog(id_a)
         assert dlg.amount_input.value() == 8.00
-        assert dlg.top_cat.currentText() == "餐饮"
-        assert dlg.sub_cat.currentText() == "早餐"
+        assert dlg.top_cat.currentText() == "🍜 餐饮"
+        assert dlg.sub_cat.currentText() == "🍳 早餐"
         assert dlg.note_input.text() == "公司楼下"
         dlg.amount_input.setValue(9.99)
         dlg.note_input.setText("改过备注")
@@ -193,8 +215,8 @@ def main() -> None:
 
         dlg2 = ExpenseDialog(id_d)
         assert dlg2.kind_income.isChecked()
-        assert dlg2.top_cat.currentText() == "收入"
-        assert dlg2.sub_cat.currentText() == "工资"
+        assert dlg2.top_cat.currentText() == "💰 收入"
+        assert dlg2.sub_cat.currentText() == "💰 工资"
         dlg2.amount_input.setValue(5200.00)
         dlg2._on_save()
         row = db.get_expense(id_d)
@@ -231,6 +253,12 @@ def main() -> None:
         db.rename_category(sub_id, "改名小类")
         usage = db.get_category_usage(top_id)
         assert usage["sub_count"] == 1 and usage["expense_count"] == 0
+        # 图标：新增分类默认 📦，可通过 update_category_icon 修改
+        assert _cat_icon(top_id) == "📦", f"新增分类默认图标应为 📦，实际 {_cat_icon(top_id)}"
+        assert _cat_icon(sub_id) == "📦"
+        db.update_category_icon(top_id, "🐱")
+        assert _cat_icon(top_id) == "🐱", "改图标未生效"
+        print("  ✅ 分类图标正常：新增默认 📦，可改图标（📦 → 🐱）")
 
         # 有小类的大类不能删
         err = db.delete_category(top_id)
@@ -247,8 +275,9 @@ def main() -> None:
 
         page_cat = CategoryPage()
         assert page_cat.tree.topLevelItemCount() == 10  # 9 个支出大类 + 收入
+        assert page_cat.tree.topLevelItem(0).text(0) == "🍜 餐饮"  # 树里带图标
         income_item = page_cat.tree.topLevelItem(9)
-        assert income_item.text(0) == "收入" and income_item.childCount() == 6
+        assert income_item.text(0) == "💰 收入" and income_item.childCount() == 6
         page_cat.tree.setCurrentItem(page_cat.tree.topLevelItem(0))
         assert page_cat.add_sub_btn.isEnabled()  # 选中一级：可加小类
         page_cat.tree.setCurrentItem(page_cat.tree.topLevelItem(0).child(0))

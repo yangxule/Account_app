@@ -5,22 +5,45 @@ from datetime import datetime
 
 from account_app.config import DB_PATH
 
-# 内置支出分类树：一级大类 -> 其下的二级小类
+# 内置支出分类树：一级大类 -> 其下的二级小类（每类带一个 emoji 图标）
 DEFAULT_CATEGORIES = [
-    ("餐饮", ["早餐", "午餐/晚餐", "外卖", "零食/饮料", "买菜/食材", "聚餐"]),
-    ("交通", ["公交/地铁", "打车/网约车", "加油/充电", "停车费", "火车/飞机"]),
-    ("居住", ["房租/房贷", "水/电/燃气", "物业费", "宽带/话费", "家居日用", "维修"]),
-    ("购物", ["衣服/鞋包", "日用品", "数码/家电", "美妆/个护"]),
-    ("娱乐", ["电影/演出", "游戏", "旅游", "运动/健身", "会员订阅"]),
-    ("医疗健康", ["看病/买药", "体检", "保健品"]),
-    ("教育学习", ["买书/文具", "课程/培训", "考试/报名"]),
-    ("人情往来", ["红包/礼金", "请客送礼", "孝敬长辈"]),
-    ("其他", ["其他支出"]),
+    ("餐饮", "🍜", [
+        ("早餐", "🍳"), ("午餐/晚餐", "🍚"), ("外卖", "🥡"), ("零食/饮料", "🧋"),
+        ("买菜/食材", "🥬"), ("聚餐", "🍻"),
+    ]),
+    ("交通", "🚌", [
+        ("公交/地铁", "🚇"), ("打车/网约车", "🚕"), ("加油/充电", "⛽"), ("停车费", "🅿️"),
+        ("火车/飞机", "✈️"),
+    ]),
+    ("居住", "🏠", [
+        ("房租/房贷", "🏠"), ("水/电/燃气", "💡"), ("物业费", "🧾"), ("宽带/话费", "📶"),
+        ("家居日用", "🧹"), ("维修", "🔧"),
+    ]),
+    ("购物", "🛍️", [
+        ("衣服/鞋包", "👕"), ("日用品", "🧴"), ("数码/家电", "📱"), ("美妆/个护", "💄"),
+    ]),
+    ("娱乐", "🎮", [
+        ("电影/演出", "🎬"), ("游戏", "🎮"), ("旅游", "🧳"), ("运动/健身", "🏃"),
+        ("会员订阅", "⭐"),
+    ]),
+    ("医疗健康", "💊", [
+        ("看病/买药", "💊"), ("体检", "🩺"), ("保健品", "💪"),
+    ]),
+    ("教育学习", "📚", [
+        ("买书/文具", "📖"), ("课程/培训", "🎓"), ("考试/报名", "📝"),
+    ]),
+    ("人情往来", "🎁", [
+        ("红包/礼金", "🧧"), ("请客送礼", "🎁"), ("孝敬长辈", "❤️"),
+    ]),
+    ("其他", "📦", [("其他支出", "📦")]),
 ]
 
 # 内置收入分类树（kind='income'）
 INCOME_CATEGORIES = [
-    ("收入", ["工资", "红包/礼金", "理财收益", "兼职外快", "报销返款", "其他收入"]),
+    ("收入", "💰", [
+        ("工资", "💰"), ("红包/礼金", "🧧"), ("理财收益", "📈"), ("兼职外快", "💼"),
+        ("报销返款", "🧾"), ("其他收入", "🪙"),
+    ]),
 ]
 
 
@@ -44,7 +67,8 @@ def init_db() -> None:
                 parent_id  INTEGER REFERENCES categories(id),  -- NULL=一级大类，否则=所属大类id
                 name       TEXT NOT NULL,
                 sort_order INTEGER NOT NULL DEFAULT 0,         -- 显示顺序
-                kind       TEXT NOT NULL DEFAULT 'expense'     -- 'expense'=支出分类，'income'=收入分类
+                kind       TEXT NOT NULL DEFAULT 'expense',    -- 'expense'=支出分类，'income'=收入分类
+                icon       TEXT NOT NULL DEFAULT ''            -- emoji 图标（可自定义）
             );
 
             CREATE TABLE IF NOT EXISTS expenses (
@@ -70,6 +94,8 @@ def init_db() -> None:
         # 老库升级 / 首次运行：写入收入分类
         if conn.execute("SELECT COUNT(*) FROM categories WHERE kind='income'").fetchone()[0] == 0:
             _seed_categories(conn, INCOME_CATEGORIES, "income", start_order=len(DEFAULT_CATEGORIES))
+        # 老库升级：给没有图标的分类按名字补上内置图标（幂等，可重复执行）
+        _fill_icons(conn)
         conn.commit()
     finally:
         conn.close()
@@ -80,6 +106,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(categories)")}
     if "kind" not in cols:
         conn.execute("ALTER TABLE categories ADD COLUMN kind TEXT NOT NULL DEFAULT 'expense'")
+    if "icon" not in cols:
+        conn.execute("ALTER TABLE categories ADD COLUMN icon TEXT NOT NULL DEFAULT ''")
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(expenses)")}
     if "kind" not in cols:
         conn.execute("ALTER TABLE expenses ADD COLUMN kind TEXT NOT NULL DEFAULT 'expense'")
@@ -88,18 +116,32 @@ def _migrate(conn: sqlite3.Connection) -> None:
 def _seed_categories(
     conn: sqlite3.Connection, categories: list, kind: str, start_order: int = 0
 ) -> None:
-    """把一套分类树写入数据库。"""
-    for i, (top_name, subs) in enumerate(categories):
+    """把一套分类树（含图标）写入数据库。"""
+    for i, (top_name, top_icon, subs) in enumerate(categories):
         cur = conn.execute(
-            "INSERT INTO categories (parent_id, name, sort_order, kind) VALUES (NULL, ?, ?, ?)",
-            (top_name, start_order + i, kind),
+            "INSERT INTO categories (parent_id, name, sort_order, kind, icon) VALUES (NULL, ?, ?, ?, ?)",
+            (top_name, start_order + i, kind, top_icon),
         )
         top_id = cur.lastrowid
-        for j, sub_name in enumerate(subs):
+        for j, (sub_name, sub_icon) in enumerate(subs):
             conn.execute(
-                "INSERT INTO categories (parent_id, name, sort_order, kind) VALUES (?, ?, ?, ?)",
-                (top_id, sub_name, j, kind),
+                "INSERT INTO categories (parent_id, name, sort_order, kind, icon) VALUES (?, ?, ?, ?, ?)",
+                (top_id, sub_name, j, kind, sub_icon),
             )
+
+
+def _fill_icons(conn: sqlite3.Connection) -> None:
+    """给没有图标的分类按名字补上内置图标（老库升级用，幂等）。"""
+    mapping: dict[str, str] = {}
+    for top_name, top_icon, subs in DEFAULT_CATEGORIES + INCOME_CATEGORIES:
+        mapping[top_name] = top_icon
+        for sub_name, sub_icon in subs:
+            mapping[sub_name] = sub_icon
+    for name, icon in mapping.items():
+        conn.execute(
+            "UPDATE categories SET icon = ? WHERE name = ? AND (icon IS NULL OR icon = '')",
+            (icon, name),
+        )
 
 
 # ---------- 分类查询 ----------
@@ -107,7 +149,7 @@ def _seed_categories(
 
 def get_top_categories(kind: str | None = None) -> list[sqlite3.Row]:
     """所有一级大类（按显示顺序）。kind 传 'expense' 或 'income' 只取一类，None 取全部。"""
-    sql = "SELECT id, name, kind FROM categories WHERE parent_id IS NULL"
+    sql = "SELECT id, name, kind, icon FROM categories WHERE parent_id IS NULL"
     params: list = []
     if kind is not None:
         sql += " AND kind = ?"
@@ -120,8 +162,14 @@ def get_top_categories(kind: str | None = None) -> list[sqlite3.Row]:
         conn.close()
 
 
-def add_category(parent_id: int | None, name: str, kind: str = "expense") -> int:
-    """新增分类（parent_id=None 是一级大类，否则是它下面的小类），返回新分类 id。"""
+def add_category(
+    parent_id: int | None, name: str, kind: str = "expense", icon: str = "📦"
+) -> int:
+    """新增分类（parent_id=None 是一级大类，否则是它下面的小类），返回新分类 id。
+
+    图标默认 📦（收入分类默认 💰），之后可用 update_category_icon 修改。"""
+    if icon == "📦" and kind == "income":
+        icon = "💰"
     conn = get_connection()
     try:
         # sort_order 排在同级最后
@@ -135,11 +183,21 @@ def add_category(parent_id: int | None, name: str, kind: str = "expense") -> int
                 "SELECT COUNT(*) FROM categories WHERE parent_id = ?", (parent_id,)
             ).fetchone()[0]
         cur = conn.execute(
-            "INSERT INTO categories (parent_id, name, sort_order, kind) VALUES (?, ?, ?, ?)",
-            (parent_id, name, n, kind),
+            "INSERT INTO categories (parent_id, name, sort_order, kind, icon) VALUES (?, ?, ?, ?, ?)",
+            (parent_id, name, n, kind, icon),
         )
         conn.commit()
         return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def update_category_icon(category_id: int, icon: str) -> None:
+    """修改分类的图标。"""
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE categories SET icon = ? WHERE id = ?", (icon, category_id))
+        conn.commit()
     finally:
         conn.close()
 
@@ -194,7 +252,7 @@ def get_sub_categories(top_id: int) -> list[sqlite3.Row]:
     conn = get_connection()
     try:
         return conn.execute(
-            "SELECT id, name FROM categories WHERE parent_id = ? ORDER BY sort_order",
+            "SELECT id, name, icon FROM categories WHERE parent_id = ? ORDER BY sort_order",
             (top_id,),
         ).fetchall()
     finally:
