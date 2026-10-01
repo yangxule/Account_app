@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 账目数据库（用户数据，不入版本库）
+*.db
+*.sqlite3
+
+# 导出的备份文件
+exports/
