@@ -119,7 +119,7 @@ class ExpenseList(QWidget):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # 备注占满剩余
         self.table.setColumnWidth(0, 110)
-        self.table.setColumnWidth(1, 180)
+        self.table.setColumnWidth(1, 220)
         self.table.setColumnWidth(2, 110)
         self.table.setColumnWidth(4, 170)
 
@@ -220,8 +220,10 @@ class ExpenseList(QWidget):
         self.table.setRowCount(len(rows))
         for i, row in enumerate(rows):
             is_income = row["kind"] == "income"
+            top = f"{row['top_icon']} {row['top_name']}".strip()
+            sub = f"{row['sub_icon']} {row['sub_name']}".strip()
             self.table.setItem(i, 0, QTableWidgetItem(row["date"]))
-            self.table.setItem(i, 1, QTableWidgetItem(f"{row['top_name']} · {row['sub_name']}"))
+            self.table.setItem(i, 1, QTableWidgetItem(f"{top} · {sub}"))
             sign = "+" if is_income else ""
             amount_item = QTableWidgetItem(f"{sign}¥{row['amount_cents'] / 100:,.2f}")
             amount_item.setTextAlignment(

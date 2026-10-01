@@ -6,6 +6,7 @@ import matplotlib
 
 matplotlib.use("qtagg")  # 嵌入 Qt 窗口的绘图后端（须在导入 canvas 之前设置）
 
+from matplotlib import colors as mcolors
 from matplotlib import font_manager
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -73,16 +74,29 @@ class StatsPage(QWidget):
         cards_row.addWidget(self.card_income_frame, 1)
         cards_row.addWidget(self.card_balance_frame, 1)
 
-        # 两个图表：饼图 + 柱状图（包在白色圆角卡片里）
-        self.pie_fig = Figure(figsize=(4.2, 3.0), tight_layout=True)
+        # 两个图表：饼图（右侧带图例列表）+ 柱状图，包在白色圆角卡片里
+        self.pie_fig = Figure(figsize=(3.0, 2.6), tight_layout=True)
         self.pie_canvas = FigureCanvasQTAgg(self.pie_fig)
         self.bar_fig = Figure(figsize=(5.6, 3.0), tight_layout=True)
         self.bar_canvas = FigureCanvasQTAgg(self.bar_fig)
         self.pie_canvas.setMinimumHeight(260)
         self.bar_canvas.setMinimumHeight(260)
 
+        # 饼图图例用 Qt 组件渲染（matplotlib 画不了彩色 emoji）：
+        # 每行 = 色块 + emoji 图标 + 分类名 + 金额 + 占比
+        self.pie_legend = QVBoxLayout()
+        self.pie_legend.setContentsMargins(4, 4, 4, 4)
+        legend_widget = QWidget()
+        legend_widget.setLayout(self.pie_legend)
+
+        pie_card = QFrame()
+        pie_card.setObjectName("statCard")
+        pie_lay = QHBoxLayout(pie_card)
+        pie_lay.addWidget(self.pie_canvas, 3)
+        pie_lay.addWidget(legend_widget, 2)
+
         charts_row = QHBoxLayout()
-        charts_row.addWidget(self._wrap_card(self.pie_canvas), 1)
+        charts_row.addWidget(pie_card, 1)
         charts_row.addWidget(self._wrap_card(self.bar_canvas), 1)
 
         layout = QVBoxLayout(self)
@@ -150,9 +164,10 @@ class StatsPage(QWidget):
         self._draw_bar()
 
     def _draw_pie(self, month: str) -> None:
-        """所选月份的支出按一级大类画饼图。"""
+        """所选月份的支出按一级大类画饼图；右侧图例列表带图标、金额和占比。"""
         self.pie_fig.clear()
         ax = self.pie_fig.add_subplot(111)
+        self._clear_pie_legend()
         rows = db.get_month_expense_by_top(month)
         if not rows:
             ax.text(
@@ -160,11 +175,37 @@ class StatsPage(QWidget):
                 ha="center", va="center", transform=ax.transAxes, fontsize=11,
             )
         else:
-            labels = [r["top_name"] for r in rows]
             values = [r["total_cents"] / 100 for r in rows]
-            ax.pie(values, labels=labels, autopct="%.1f%%", startangle=90, textprops={"fontsize": 9})
+            total = sum(values)
+            wedges, _ = ax.pie(values, startangle=90)
+            for i, r in enumerate(rows):
+                color = mcolors.to_hex(wedges[i].get_facecolor())
+                self._add_pie_legend_row(color, r, values[i], total)
         ax.set_title(f"{month} 支出分类占比", fontsize=11)
         self.pie_canvas.draw()
+
+    def _clear_pie_legend(self) -> None:
+        """清空饼图图例列表。"""
+        while self.pie_legend.count():
+            item = self.pie_legend.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    def _add_pie_legend_row(self, color: str, row, value: float, total: float) -> None:
+        """图例一行：色块 + emoji 图标 + 分类名 + 金额 + 占比。"""
+        row_widget = QWidget()
+        lay = QHBoxLayout(row_widget)
+        lay.setContentsMargins(0, 2, 0, 2)
+        dot = QLabel()
+        dot.setFixedSize(10, 10)
+        dot.setStyleSheet(f"background: {color}; border-radius: 5px;")
+        text = QLabel(
+            f"{row['top_icon']} {row['top_name']}  ¥{value:,.2f}（{value / total * 100:.1f}%）"
+        )
+        lay.addWidget(dot)
+        lay.addWidget(text)
+        lay.addStretch()
+        self.pie_legend.addWidget(row_widget)
 
     def _draw_bar(self) -> None:
         """近12个月收支趋势柱状图（固定以当前月为终点，不受月份选择影响）。"""

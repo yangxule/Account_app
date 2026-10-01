@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from PySide6.QtCore import QDate
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 from openpyxl import load_workbook
 
 from account_app import db
@@ -169,6 +169,10 @@ def main() -> None:
         assert "支出 ¥62.00" in page.summary.text()
         assert "收入 ¥5,000.00" in page.summary.text()
         print(f"  ✅ 汇总行正常：{page.summary.text()}")
+        # 明细表格分类列带图标（第一行是最新记的工资收入）
+        assert page.table.item(0, 1).text() == "💰 收入 · 💰 工资", page.table.item(0, 1).text()
+        assert page.table.item(1, 1).text() == "🍜 餐饮 · 🍳 早餐"
+        print("  ✅ 明细表格分类列带图标：💰 收入 · 💰 工资 / 🍜 餐饮 · 🍳 早餐")
 
         # ---- 记一笔页面的收支开关测试 ----
         form = ExpenseForm()
@@ -178,6 +182,11 @@ def main() -> None:
         assert form.top_cat.currentText() == "💰 收入"
         assert form.sub_cat.currentText() == "💰 工资"
         print("  ✅ 记一笔收支开关正常：切到收入自动换收入分类（含图标）")
+        # 当日明细表分类列带图标（今天有 1 笔工资 + 1 笔早餐）
+        assert form.today_table.rowCount() == 2
+        assert form.today_table.item(0, 0).text() == "💰 收入 · 💰 工资"
+        assert form.today_table.item(1, 0).text() == "🍜 餐饮 · 🍳 早餐"
+        print("  ✅ 当日明细分类列带图标：💰 收入 · 💰 工资 / 🍜 餐饮 · 🍳 早餐")
 
         # ---- 统计查询与页面测试 ----
         from account_app.ui.stats_page import StatsPage
@@ -188,6 +197,8 @@ def main() -> None:
         assert sep_summary["expense_cents"] == 5400 and sep_summary["income_cents"] == 0
         by_top = {r["top_name"]: r["total_cents"] for r in db.get_month_expense_by_top("2026-09")}
         assert by_top == {"购物": 5000, "交通": 400}
+        by_top_icons = {r["top_name"]: r["top_icon"] for r in db.get_month_expense_by_top("2026-09")}
+        assert by_top_icons == {"购物": "🛍️", "交通": "🚌"}
         trend = {(r["month"], r["kind"]): r["total_cents"] for r in db.get_monthly_trend(12, "2026-10")}
         assert trend[("2026-10", "income")] == 500000
         assert trend[("2026-09", "expense")] == 5400
@@ -199,6 +210,15 @@ def main() -> None:
         assert stats.card_income.text() == "¥5,000.00"
         assert stats.card_balance.text() == "+¥4,992.00"
         print("  ✅ 统计页面正常：三卡片数值正确，饼图/柱状图绘制成功")
+        # 饼图图例列表带图标（10 月只有餐饮支出 ¥8）
+        legend_texts = []
+        for i in range(stats.pie_legend.count()):
+            w = stats.pie_legend.itemAt(i).widget()
+            if w:
+                legend_texts.extend(lbl.text() for lbl in w.findChildren(QLabel))
+        joined = " ".join(legend_texts)
+        assert "🍜 餐饮" in joined and "¥8.00" in joined, f"图例内容：{joined}"
+        print("  ✅ 统计页饼图图例带图标和金额：🍜 餐饮 ¥8.00")
 
         # ---- 编辑弹窗测试（支出 + 收入各一次） ----
         dlg = ExpenseDialog(id_a)

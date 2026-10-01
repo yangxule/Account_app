@@ -203,7 +203,9 @@ class ExpenseForm(QWidget):
         for i, row in enumerate(rows):
             cents = row["amount_cents"]
             is_income = row["kind"] == "income"
-            cat_text = f"{row['top_name']} · {row['sub_name']}"
+            top = f"{row['top_icon']} {row['top_name']}".strip()
+            sub = f"{row['sub_icon']} {row['sub_name']}".strip()
+            cat_text = f"{top} · {sub}"
             self.today_table.setItem(i, 0, QTableWidgetItem(cat_text))
             sign = "+" if is_income else ""
             amount_item = QTableWidgetItem(f"{sign}¥{cents / 100:,.2f}")

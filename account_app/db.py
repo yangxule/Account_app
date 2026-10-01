@@ -292,13 +292,14 @@ def insert_expense(
 
 
 def get_expenses_by_date(date: str) -> list[sqlite3.Row]:
-    """某一天的全部账目（含分类名），按记录时间倒序。"""
+    """某一天的全部账目（含分类名和图标），按记录时间倒序。"""
     conn = get_connection()
     try:
         return conn.execute(
             """
             SELECT e.id, e.amount_cents, e.note, e.kind,
-                   s.name AS sub_name, t.name AS top_name
+                   s.name AS sub_name, s.icon AS sub_icon,
+                   t.name AS top_name, t.icon AS top_icon
             FROM expenses e
             JOIN categories s ON s.id = e.category_id
             LEFT JOIN categories t ON t.id = s.parent_id
@@ -324,7 +325,8 @@ def search_expenses(
     """按条件搜索账目，按日期倒序。空条件 = 不过滤。"""
     sql = """
         SELECT e.id, e.date, e.amount_cents, e.note, e.kind,
-               s.name AS sub_name, t.name AS top_name
+               s.name AS sub_name, s.icon AS sub_icon,
+               t.name AS top_name, t.icon AS top_icon
         FROM expenses e
         JOIN categories s ON s.id = e.category_id
         LEFT JOIN categories t ON t.id = s.parent_id
@@ -452,12 +454,12 @@ def get_month_summary(month: str) -> sqlite3.Row:
 
 
 def get_month_expense_by_top(month: str) -> list[sqlite3.Row]:
-    """某个月的支出按一级大类汇总，从多到少排序。"""
+    """某个月的支出按一级大类汇总（含图标），从多到少排序。"""
     conn = get_connection()
     try:
         return conn.execute(
             """
-            SELECT t.name AS top_name, SUM(e.amount_cents) AS total_cents
+            SELECT t.name AS top_name, t.icon AS top_icon, SUM(e.amount_cents) AS total_cents
             FROM expenses e
             JOIN categories s ON s.id = e.category_id
             LEFT JOIN categories t ON t.id = s.parent_id
