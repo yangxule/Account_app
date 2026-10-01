@@ -73,7 +73,7 @@ class StatsPage(QWidget):
         cards_row.addWidget(self.card_income_frame, 1)
         cards_row.addWidget(self.card_balance_frame, 1)
 
-        # 两个图表：饼图 + 柱状图
+        # 两个图表：饼图 + 柱状图（包在白色圆角卡片里）
         self.pie_fig = Figure(figsize=(4.2, 3.0), tight_layout=True)
         self.pie_canvas = FigureCanvasQTAgg(self.pie_fig)
         self.bar_fig = Figure(figsize=(5.6, 3.0), tight_layout=True)
@@ -82,8 +82,8 @@ class StatsPage(QWidget):
         self.bar_canvas.setMinimumHeight(260)
 
         charts_row = QHBoxLayout()
-        charts_row.addWidget(self.pie_canvas, 1)
-        charts_row.addWidget(self.bar_canvas, 1)
+        charts_row.addWidget(self._wrap_card(self.pie_canvas), 1)
+        charts_row.addWidget(self._wrap_card(self.bar_canvas), 1)
 
         layout = QVBoxLayout(self)
         layout.addLayout(month_row)
@@ -91,9 +91,9 @@ class StatsPage(QWidget):
         layout.addLayout(charts_row, 1)
 
     def _make_card(self, title: str) -> tuple[QFrame, QLabel]:
-        """一张统计卡片：灰色圆角底 + 标题 + 大数字。"""
+        """一张统计卡片：白色圆角底 + 标题 + 大数字（外观由 theme.py 统一定义）。"""
         frame = QFrame()
-        frame.setStyleSheet("QFrame { background: #f7f7f7; border-radius: 10px; }")
+        frame.setObjectName("statCard")
         lay = QVBoxLayout(frame)
         t = QLabel(title)
         t.setStyleSheet("color: #666;")
@@ -102,6 +102,15 @@ class StatsPage(QWidget):
         lay.addWidget(t)
         lay.addWidget(v)
         return frame, v
+
+    def _wrap_card(self, widget) -> QFrame:
+        """把图表包进白色圆角卡片，和数字卡片风格统一。"""
+        frame = QFrame()
+        frame.setObjectName("statCard")
+        lay = QVBoxLayout(frame)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.addWidget(widget)
+        return frame
 
     def _load_months(self) -> None:
         """月份下拉框：有账目的月份（新的在前），当前月兜底排第一。"""

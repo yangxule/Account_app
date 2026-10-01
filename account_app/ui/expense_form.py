@@ -103,6 +103,7 @@ class ExpenseForm(QWidget):
         self.today_table.setHorizontalHeaderLabels(["分类", "金额", "备注"])
         self.today_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.today_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.today_table.setAlternatingRowColors(True)  # 隔行浅色，配合皮肤更易读
         self.today_table.horizontalHeader().setStretchLastSection(True)
         self.today_table.setColumnWidth(0, 150)
         self.today_table.setColumnWidth(1, 100)

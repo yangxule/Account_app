@@ -22,6 +22,7 @@ from openpyxl import load_workbook
 
 from account_app import db
 from account_app.ui import expense_list as el_mod
+from account_app.ui import theme
 from account_app.ui.expense_dialog import ExpenseDialog
 from account_app.ui.expense_form import ExpenseForm
 from account_app.ui.expense_list import ExpenseList
@@ -86,6 +87,7 @@ def _test_migration(old_db_path: Path) -> None:
 
 def main() -> None:
     app = QApplication([])
+    theme.apply(app)  # V1.1 皮肤：验证整套 QSS 能正常应用到所有控件
     tmp = Path(tempfile.mkdtemp())
     try:
         # ---- 旧库升级测试 ----

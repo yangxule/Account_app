@@ -38,6 +38,7 @@ class CategoryPage(QWidget):
         self.add_sub_btn = QPushButton("➕ 加二级小类")
         self.rename_btn = QPushButton("✏️ 改名")
         self.delete_btn = QPushButton("🗑️ 删除")
+        self.delete_btn.setObjectName("danger")  # 删除是危险操作，用红色
         self.add_top_btn.clicked.connect(self._add_top)
         self.add_sub_btn.clicked.connect(self._add_sub)
         self.rename_btn.clicked.connect(self._rename)

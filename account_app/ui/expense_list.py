@@ -115,6 +115,7 @@ class ExpenseList(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)  # 隔行浅色，配合皮肤更易读
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # 备注占满剩余
         self.table.setColumnWidth(0, 110)
@@ -225,9 +226,10 @@ class ExpenseList(QWidget):
             self.table.setItem(i, 2, amount_item)
             self.table.setItem(i, 3, QTableWidgetItem(row["note"]))
 
-            # 每行两个操作按钮
+            # 每行两个操作按钮（删除是危险操作，用红色）
             edit_btn = QPushButton("编辑")
             del_btn = QPushButton("删除")
+            del_btn.setObjectName("danger")
             edit_btn.clicked.connect(lambda _, eid=row["id"]: self._edit(eid))
             del_btn.clicked.connect(lambda _, eid=row["id"]: self._delete(eid))
             box = QWidget()
