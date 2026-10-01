@@ -1,0 +1,5 @@
+# Account 记账App 的依赖清单
+# 安装方式：conda activate vibe_coding_learning && pip install -r requirements.txt
+PySide6
+matplotlib
+openpyxl
