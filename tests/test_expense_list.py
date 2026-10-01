@@ -1,4 +1,4 @@
-"""「明细」页面的自动化测试：筛选、编辑弹窗、导出、删除。
+"""「明细」页面的自动化测试：筛选、编辑弹窗、导出、删除、收入、旧库升级。
 
 运行方式（在项目根目录）：
     conda activate vibe_coding_learning
@@ -8,6 +8,7 @@
 """
 
 import shutil
+import sqlite3 as sqlite3_mod
 import sys
 import tempfile
 from pathlib import Path
@@ -22,6 +23,7 @@ from openpyxl import load_workbook
 from account_app import db
 from account_app.ui import expense_list as el_mod
 from account_app.ui.expense_dialog import ExpenseDialog
+from account_app.ui.expense_form import ExpenseForm
 from account_app.ui.expense_list import ExpenseList
 from account_app.ui.main_window import MainWindow
 
@@ -39,19 +41,67 @@ def _cat_id(top_name: str, sub_name: str) -> int:
     return sub["id"]
 
 
+def _test_migration(old_db_path: Path) -> None:
+    """旧版数据库（无 kind 列）升级后应自动补齐，老数据不受影响。"""
+    conn = sqlite3_mod.connect(old_db_path)
+    conn.executescript(
+        """
+        CREATE TABLE categories (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            parent_id  INTEGER REFERENCES categories(id),
+            name       TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE expenses (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            amount_cents INTEGER NOT NULL,
+            category_id  INTEGER REFERENCES categories(id),
+            date         TEXT NOT NULL,
+            note         TEXT NOT NULL DEFAULT '',
+            created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        );
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+        INSERT INTO categories (parent_id, name, sort_order) VALUES (NULL, '餐饮', 0);
+        INSERT INTO categories (parent_id, name, sort_order) VALUES (1, '早餐', 0);
+        INSERT INTO expenses (amount_cents, category_id, date, note) VALUES (800, 2, '2026-01-01', '老账');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    db.DB_PATH = old_db_path
+    db.init_db()
+
+    conn = db.get_connection()
+    cat_cols = {r["name"] for r in conn.execute("PRAGMA table_info(categories)")}
+    exp_cols = {r["name"] for r in conn.execute("PRAGMA table_info(expenses)")}
+    assert "kind" in cat_cols and "kind" in exp_cols, "kind 列未补齐"
+    n_income = conn.execute("SELECT COUNT(*) FROM categories WHERE kind='income'").fetchone()[0]
+    assert n_income == 7, f"收入分类应为 7 个，实际 {n_income}"
+    row = conn.execute("SELECT * FROM expenses").fetchone()
+    assert row["kind"] == "expense" and row["note"] == "老账", "老数据被破坏"
+    conn.close()
+    print("  ✅ 旧库升级正常：新列补齐、收入分类就位、老账原样保留")
+
+
 def main() -> None:
     app = QApplication([])
     tmp = Path(tempfile.mkdtemp())
     try:
+        # ---- 旧库升级测试 ----
+        _test_migration(tmp / "old.db")
+
         # ---- 切到临时数据库（草稿纸模式） ----
         db.DB_PATH = tmp / "test.db"
         el_mod.EXPORT_DIR = tmp / "exports"
         db.init_db()
 
-        # ---- 准备测试数据：3 笔账 ----
+        # ---- 准备测试数据：3 笔支出 + 1 笔收入 ----
         id_a = db.insert_expense(800, _cat_id("餐饮", "早餐"), "2026-10-01", "公司楼下")
         id_b = db.insert_expense(400, _cat_id("交通", "公交/地铁"), "2026-09-30", "上班")
         id_c = db.insert_expense(5000, _cat_id("购物", "日用品"), "2026-09-28", "超市采购")
+        id_d = db.insert_expense(500000, _cat_id("收入", "工资"), "2026-10-01", "10月工资", kind="income")
+        assert id_d is not None
 
         # ---- 筛选测试 ----
         page = ExpenseList()
@@ -70,41 +120,65 @@ def main() -> None:
         page.date_from.setDate(QDate(2026, 9, 30))
         page.date_to.setDate(QDate(2026, 10, 1))
         page.refresh()
-        check("日期 09-30 ~ 10-01", [id_a, id_b])
+        check("日期 09-30 ~ 10-01", [id_a, id_b, id_d])
         page.date_check.setChecked(False)
 
         page.top_filter.setCurrentIndex(page.top_filter.findText("交通"))
         page.refresh()
         check("分类筛选「交通」", [id_b])
         page.top_filter.setCurrentIndex(0)
-        assert not page.sub_filter.isEnabled()
-        print("  ✅ 大类=全部时小类自动禁用")
 
+        page.kind_filter.setCurrentIndex(page.kind_filter.findText("收入"))
+        page.refresh()
+        check("类型筛选「收入」", [id_d])
+        assert page.table.item(0, 2).text().startswith("+¥5,000.00")
+        print("  ✅ 收入在列表中显示绿色 + 号")
+
+        page.kind_filter.setCurrentIndex(0)
         page.min_amount.setValue(10.0)
         page.refresh()
-        check("最小金额 ¥10", [id_c])
+        check("最小金额 ¥10", [id_c, id_d])
         page.min_amount.setValue(0.0)
 
         page.refresh()
-        assert page.table.rowCount() == 3
-        assert "共 3 笔" in page.summary.text() and "62.00" in page.summary.text()
+        assert page.table.rowCount() == 4
+        assert "共 4 笔" in page.summary.text()
+        assert "支出 ¥62.00" in page.summary.text()
+        assert "收入 ¥5,000.00" in page.summary.text()
         print(f"  ✅ 汇总行正常：{page.summary.text()}")
 
-        # ---- 编辑弹窗测试 ----
+        # ---- 记一笔页面的收支开关测试 ----
+        form = ExpenseForm()
+        assert form.top_cat.currentText() == "餐饮"
+        form.kind_income.setChecked(True)
+        assert form.top_cat.currentText() == "收入"
+        assert form.sub_cat.currentText() == "工资"
+        print("  ✅ 记一笔收支开关正常：切到收入自动换收入分类")
+
+        # ---- 编辑弹窗测试（支出 + 收入各一次） ----
         dlg = ExpenseDialog(id_a)
         assert dlg.amount_input.value() == 8.00
         assert dlg.top_cat.currentText() == "餐饮"
         assert dlg.sub_cat.currentText() == "早餐"
         assert dlg.note_input.text() == "公司楼下"
-        print("  ✅ 编辑弹窗回填正确：¥8.00 餐饮·早餐「公司楼下」")
         dlg.amount_input.setValue(9.99)
         dlg.note_input.setText("改过备注")
         dlg._on_save()
         row = db.get_expense(id_a)
         assert row["amount_cents"] == 999 and row["note"] == "改过备注"
-        print("  ✅ 编辑保存成功：改为 ¥9.99「改过备注」")
+        print("  ✅ 支出编辑保存成功：改为 ¥9.99「改过备注」")
 
-        # ---- 导出测试 ----
+        dlg2 = ExpenseDialog(id_d)
+        assert dlg2.kind_income.isChecked()
+        assert dlg2.top_cat.currentText() == "收入"
+        assert dlg2.sub_cat.currentText() == "工资"
+        dlg2.amount_input.setValue(5200.00)
+        dlg2._on_save()
+        row = db.get_expense(id_d)
+        assert row["kind"] == "income" and row["amount_cents"] == 520000
+        print("  ✅ 收入编辑保存成功：改为 ¥5,200.00")
+
+        # ---- 导出测试（含类型列） ----
         page.refresh()
         page._export("csv")
         page._export("xlsx")
@@ -114,16 +188,16 @@ def main() -> None:
         xlsx_file = next(f for f in files if f.suffix == ".xlsx")
         with open(csv_file, encoding="utf-8-sig") as f:
             lines = f.read().strip().splitlines()
-        assert len(lines) == 4 and lines[0].startswith("日期")
-        assert "超市采购" in lines[-1]
+        assert len(lines) == 5 and "类型" in lines[0], "导出应含表头「类型」"
+        assert any("收入" in ln for ln in lines[1:]), "导出应含收入行"
         wb = load_workbook(xlsx_file)
-        assert wb.active.max_row == 4
-        print("  ✅ 导出正常：CSV / Excel 各 4 行（含表头）")
+        assert wb.active.max_row == 5
+        print("  ✅ 导出正常：CSV / Excel 各 5 行，含「类型」列")
 
         # ---- 删除 + 主窗口联动测试 ----
         db.delete_expense(id_b)
         win = MainWindow()
-        assert win.expense_list.table.rowCount() == 2
+        assert win.expense_list.table.rowCount() == 3
         print("  ✅ 删除正常；主窗口与页面联动正常")
 
         print("全部测试通过 ✅")

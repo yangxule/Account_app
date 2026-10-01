@@ -5,6 +5,7 @@ from datetime import datetime
 
 from openpyxl import Workbook
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -64,7 +65,13 @@ class ExpenseList(QWidget):
         filter_row1.addWidget(self.date_to)
         filter_row1.addStretch()
 
-        # 筛选栏第二行：分类 + 金额范围 + 重置 + 导出
+        # 筛选栏第二行：类型 + 分类 + 金额范围 + 重置 + 导出
+        self.kind_filter = QComboBox()
+        self.kind_filter.addItem("全部", None)
+        self.kind_filter.addItem("支出", "expense")
+        self.kind_filter.addItem("收入", "income")
+        self.kind_filter.currentIndexChanged.connect(self.refresh)
+
         self.top_filter = QComboBox()
         self.sub_filter = QComboBox()
         self.top_filter.currentIndexChanged.connect(self._on_top_filter_changed)
@@ -86,6 +93,8 @@ class ExpenseList(QWidget):
         self.export_csv_btn.clicked.connect(lambda: self._export("csv"))
 
         filter_row2 = QHBoxLayout()
+        filter_row2.addWidget(QLabel("类型"))
+        filter_row2.addWidget(self.kind_filter)
         filter_row2.addWidget(QLabel("分类"))
         filter_row2.addWidget(self.top_filter)
         filter_row2.addWidget(self.sub_filter)
@@ -153,7 +162,8 @@ class ExpenseList(QWidget):
         """全部筛选条件恢复默认。"""
         widgets = (
             self.keyword_input, self.date_check, self.date_from, self.date_to,
-            self.top_filter, self.sub_filter, self.min_amount, self.max_amount,
+            self.kind_filter, self.top_filter, self.sub_filter,
+            self.min_amount, self.max_amount,
         )
         for w in widgets:
             w.blockSignals(True)  # 重置过程中不触发一次次刷新
@@ -162,6 +172,7 @@ class ExpenseList(QWidget):
         today = QDate.currentDate()
         self.date_from.setDate(today)
         self.date_to.setDate(today)
+        self.kind_filter.setCurrentIndex(0)
         self.top_filter.setCurrentIndex(0)
         self.sub_filter.setCurrentIndex(0)
         self.min_amount.setValue(0.0)
@@ -176,6 +187,7 @@ class ExpenseList(QWidget):
         use_date = self.date_check.isChecked()
         top_id = self.top_filter.currentData()
         sub_id = self.sub_filter.currentData()
+        kind = self.kind_filter.currentData()
         min_cents = round(self.min_amount.value() * 100) or None
         max_cents = round(self.max_amount.value() * 100) or None
         rows = db.search_expenses(
@@ -186,21 +198,30 @@ class ExpenseList(QWidget):
             sub_id=sub_id,
             min_cents=min_cents,
             max_cents=max_cents,
+            kind=kind,
         )
         self._last_rows = rows
         self._fill_table(rows)
-        total = sum(r["amount_cents"] for r in rows)
-        self.summary.setText(f"共 {len(rows)} 笔 · 合计 ¥{total / 100:,.2f}")
+        expense_total = sum(r["amount_cents"] for r in rows if r["kind"] == "expense")
+        income_total = sum(r["amount_cents"] for r in rows if r["kind"] == "income")
+        self.summary.setText(
+            f"共 {len(rows)} 笔 · 支出 ¥{expense_total / 100:,.2f}"
+            f" · 收入 ¥{income_total / 100:,.2f}"
+        )
 
     def _fill_table(self, rows) -> None:
         self.table.setRowCount(len(rows))
         for i, row in enumerate(rows):
+            is_income = row["kind"] == "income"
             self.table.setItem(i, 0, QTableWidgetItem(row["date"]))
             self.table.setItem(i, 1, QTableWidgetItem(f"{row['top_name']} · {row['sub_name']}"))
-            amount_item = QTableWidgetItem(f"¥{row['amount_cents'] / 100:,.2f}")
+            sign = "+" if is_income else ""
+            amount_item = QTableWidgetItem(f"{sign}¥{row['amount_cents'] / 100:,.2f}")
             amount_item.setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
+            if is_income:
+                amount_item.setForeground(QColor("#2e7d32"))  # 收入显示绿色 + 号
             self.table.setItem(i, 2, amount_item)
             self.table.setItem(i, 3, QTableWidgetItem(row["note"]))
 
@@ -247,25 +268,32 @@ class ExpenseList(QWidget):
             return
         EXPORT_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        headers = ["日期", "类型", "一级分类", "二级分类", "金额(元)", "备注"]
+        data_rows = [
+            [
+                r["date"],
+                "收入" if r["kind"] == "income" else "支出",
+                r["top_name"],
+                r["sub_name"],
+                r["amount_cents"] / 100,
+                r["note"],
+            ]
+            for r in rows
+        ]
         if fmt == "csv":
             path = EXPORT_DIR / f"账目导出_{stamp}.csv"
             with open(path, "w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
-                writer.writerow(["日期", "一级分类", "二级分类", "金额(元)", "备注"])
-                for r in rows:
-                    writer.writerow(
-                        [r["date"], r["top_name"], r["sub_name"], r["amount_cents"] / 100, r["note"]]
-                    )
+                writer.writerow(headers)
+                writer.writerows(data_rows)
         else:
             path = EXPORT_DIR / f"账目导出_{stamp}.xlsx"
             wb = Workbook()
             ws = wb.active
             ws.title = "账目"
-            ws.append(["日期", "一级分类", "二级分类", "金额(元)", "备注"])
-            for r in rows:
-                ws.append(
-                    [r["date"], r["top_name"], r["sub_name"], r["amount_cents"] / 100, r["note"]]
-                )
+            ws.append(headers)
+            for row in data_rows:
+                ws.append(row)
             wb.save(path)
         self._show_feedback(f"✓ 已导出 {len(rows)} 笔到：{path}")
 
