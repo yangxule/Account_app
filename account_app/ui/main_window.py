@@ -20,18 +20,20 @@ class MainWindow(QMainWindow):
         self.expense_list = ExpenseList()
         self.stats_page = StatsPage()
         self.category_page = CategoryPage()
+        self.budget_page = BudgetPage()
 
         tabs = QTabWidget()
         tabs.addTab(self.expense_form, "记一笔")
         tabs.addTab(self.expense_list, "明细")
         tabs.addTab(self.stats_page, "统计")
         tabs.addTab(self.category_page, "分类设置")
-        tabs.addTab(BudgetPage(), "预算")
+        tabs.addTab(self.budget_page, "预算")
         self.setCentralWidget(tabs)
 
         # 记一笔保存后，明细页和统计页自动刷新
         self.expense_form.saved.connect(self.expense_list.refresh)
         self.expense_form.saved.connect(self.stats_page.refresh)
+        self.expense_form.saved.connect(self.budget_page.refresh)
         # 分类有增删改后，记一笔和明细的分类下拉框同步更新
         self.category_page.changed.connect(self.expense_form._load_categories)
         self.category_page.changed.connect(self.expense_list._load_categories)
@@ -44,3 +46,5 @@ class MainWindow(QMainWindow):
             self.expense_list.refresh()
         elif tab is self.stats_page:
             self.stats_page.refresh()
+        elif tab is self.budget_page:
+            self.budget_page.refresh()

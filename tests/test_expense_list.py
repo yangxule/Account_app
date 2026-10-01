@@ -253,6 +253,47 @@ def main() -> None:
         assert not page_cat.add_sub_btn.isEnabled()  # 选中二级：不可加小类
         print("  ✅ 分类设置页面正常：树加载 10 大类、收入 6 小类、按钮状态正确")
 
+        # ---- 预算功能测试 ----
+        from account_app.ui.budget_page import BudgetPage, budget_warning_for
+
+        assert db.get_setting("不存在的键") is None
+        db.set_setting("monthly_budget", "200000")  # ¥2,000
+        assert db.get_setting("monthly_budget") == "200000"
+
+        budget_page = BudgetPage()
+        assert budget_page.amount_input.value() == 2000.00  # 回填已保存的预算
+        assert "¥9.99" in budget_page.detail.text() and "正常" in budget_page.status.text()
+        print("  ✅ 预算页正常：回填 ¥2,000，本月已花 ¥9.99 状态正常")
+
+        budget_page.amount_input.setValue(3000.00)
+        budget_page._save()
+        assert db.get_setting("monthly_budget") == "300000"
+        print("  ✅ 预算页保存正常：改预算为 ¥3,000 已存库")
+
+        # 阈值提醒函数（预算设为 ¥100 测阈值）
+        db.set_setting("monthly_budget", "10000")
+        warn, color = budget_warning_for("2026-10", 8500)
+        assert "接近" in warn and color == "#ef6c00"
+        warn2, color2 = budget_warning_for("2026-10", 10500)
+        assert "超出" in warn2 and color2 == "#c62828"
+        warn3, color3 = budget_warning_for("2026-10", 5000)
+        assert warn3 is None and color3 is None
+        print("  ✅ 预算阈值提醒正确：80% 橙色接近 / 100% 红色超支 / 未达阈值不提醒")
+
+        # 记一笔保存时的提醒（预算 ¥100：先花 85 到 85%，再花 20 到 105%）
+        form = ExpenseForm()
+        form.amount_input.setValue(85.00)
+        form._save()
+        assert "接近预算" in form.feedback.text()
+        form.amount_input.setValue(20.00)
+        form._save()
+        assert "超出预算" in form.feedback.text()
+        print("  ✅ 记一笔超支提醒正常：85% 橙色提醒，105% 红色提醒")
+
+        budget_page.refresh()
+        assert "已超支" in budget_page.status.text()
+        print("  ✅ 预算页状态联动正常：超支后显示红色状态")
+
         print("全部测试通过 ✅")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

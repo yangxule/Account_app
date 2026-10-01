@@ -345,6 +345,33 @@ def delete_expense(expense_id: int) -> None:
         conn.close()
 
 
+# ---------- 设置存取 ----------
+
+
+def get_setting(key: str) -> str | None:
+    """读一个设置项（如 monthly_budget，单位分）。没有则返回 None。"""
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+    finally:
+        conn.close()
+
+
+def set_setting(key: str, value: str) -> None:
+    """写一个设置项（不存在则新建，存在则覆盖）。"""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ---------- 统计查询 ----------
 
 

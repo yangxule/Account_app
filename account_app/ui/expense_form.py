@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from account_app import db
+from account_app.ui.budget_page import budget_warning_for
 
 
 class ExpenseForm(QWidget):
@@ -144,11 +145,11 @@ class ExpenseForm(QWidget):
     def _save(self) -> None:
         amount = self.amount_input.value()
         if amount <= 0:
-            self._show_feedback("请先填写金额", ok=False)
+            self._show_feedback("请先填写金额", color="#c62828")
             return
         sub_id = self.sub_cat.currentData()
         if sub_id is None:
-            self._show_feedback("请选择分类", ok=False)
+            self._show_feedback("请选择分类", color="#c62828")
             return
         kind = self._kind()
         date_str = self.date_input.date().toString("yyyy-MM-dd")
@@ -161,7 +162,19 @@ class ExpenseForm(QWidget):
             kind=kind,
         )
         kind_text = "收入" if kind == "income" else "支出"
-        self._show_feedback(f"✓ 已记下 {kind_text}·{self.sub_cat.currentText()} ¥{amount:.2f}")
+        # 记支出时检查本月预算：接近或超支要提醒
+        warn_text, warn_color = None, None
+        if kind == "expense":
+            month = date_str[:7]
+            spent = db.get_month_summary(month)["expense_cents"]
+            warn_text, warn_color = budget_warning_for(month, spent)
+        if warn_text:
+            self._show_feedback(
+                f"✓ 已记下 {kind_text}·{self.sub_cat.currentText()} ¥{amount:.2f}\n{warn_text}",
+                color=warn_color,
+            )
+        else:
+            self._show_feedback(f"✓ 已记下 {kind_text}·{self.sub_cat.currentText()} ¥{amount:.2f}")
         # 金额和备注清空、类型/分类/日期保留，方便连续记账
         self.amount_input.setValue(0.0)
         self.note_input.clear()
@@ -169,8 +182,8 @@ class ExpenseForm(QWidget):
         self._refresh_list()
         self.saved.emit()  # 通知明细页等刷新
 
-    def _show_feedback(self, text: str, ok: bool = True) -> None:
-        self.feedback.setStyleSheet("color: #2e7d32;" if ok else "color: #c62828;")
+    def _show_feedback(self, text: str, color: str = "#2e7d32") -> None:
+        self.feedback.setStyleSheet(f"color: {color};")
         self.feedback.setText(text)
 
     # ---------- 当日明细 ----------
