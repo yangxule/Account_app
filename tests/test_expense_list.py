@@ -155,6 +155,27 @@ def main() -> None:
         assert form.sub_cat.currentText() == "工资"
         print("  ✅ 记一笔收支开关正常：切到收入自动换收入分类")
 
+        # ---- 统计查询与页面测试 ----
+        from account_app.ui.stats_page import StatsPage
+
+        summary = db.get_month_summary("2026-10")
+        assert summary["expense_cents"] == 800 and summary["income_cents"] == 500000
+        sep_summary = db.get_month_summary("2026-09")
+        assert sep_summary["expense_cents"] == 5400 and sep_summary["income_cents"] == 0
+        by_top = {r["top_name"]: r["total_cents"] for r in db.get_month_expense_by_top("2026-09")}
+        assert by_top == {"购物": 5000, "交通": 400}
+        trend = {(r["month"], r["kind"]): r["total_cents"] for r in db.get_monthly_trend(12, "2026-10")}
+        assert trend[("2026-10", "income")] == 500000
+        assert trend[("2026-09", "expense")] == 5400
+        print("  ✅ 统计查询正常：月度汇总 / 分类占比 / 12个月趋势")
+
+        stats = StatsPage()
+        assert stats.month_combo.currentText() == "2026-10"
+        assert stats.card_expense.text() == "¥8.00"
+        assert stats.card_income.text() == "¥5,000.00"
+        assert stats.card_balance.text() == "+¥4,992.00"
+        print("  ✅ 统计页面正常：三卡片数值正确，饼图/柱状图绘制成功")
+
         # ---- 编辑弹窗测试（支出 + 收入各一次） ----
         dlg = ExpenseDialog(id_a)
         assert dlg.amount_input.value() == 8.00

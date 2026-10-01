@@ -1,6 +1,7 @@
 """数据库：建表、初始化默认分类、旧库升级、提供连接。"""
 
 import sqlite3
+from datetime import datetime
 
 from account_app.config import DB_PATH
 
@@ -271,5 +272,70 @@ def delete_expense(expense_id: int) -> None:
     try:
         conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ---------- 统计查询 ----------
+
+
+def get_month_summary(month: str) -> sqlite3.Row:
+    """某个月（格式 YYYY-MM）的支出、收入合计。"""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN kind='expense' THEN amount_cents END), 0) AS expense_cents,
+                COALESCE(SUM(CASE WHEN kind='income' THEN amount_cents END), 0) AS income_cents
+            FROM expenses
+            WHERE substr(date, 1, 7) = ?
+            """,
+            (month,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def get_month_expense_by_top(month: str) -> list[sqlite3.Row]:
+    """某个月的支出按一级大类汇总，从多到少排序。"""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT t.name AS top_name, SUM(e.amount_cents) AS total_cents
+            FROM expenses e
+            JOIN categories s ON s.id = e.category_id
+            LEFT JOIN categories t ON t.id = s.parent_id
+            WHERE e.kind = 'expense' AND substr(e.date, 1, 7) = ?
+            GROUP BY t.id
+            ORDER BY total_cents DESC
+            """,
+            (month,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def get_monthly_trend(months: int = 12, end_month: str = "") -> list[sqlite3.Row]:
+    """最近 N 个月（截止 end_month，默认当月）的每月支出/收入合计，按月份升序。"""
+    if not end_month:
+        end_month = datetime.now().strftime("%Y-%m")
+    y, m = map(int, end_month.split("-"))
+    start_total = y * 12 + (m - 1) - (months - 1)
+    start_y, start_m0 = divmod(start_total, 12)
+    start_month = f"{start_y:04d}-{start_m0 + 1:02d}"
+    conn = get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT substr(date, 1, 7) AS month, kind, SUM(amount_cents) AS total_cents
+            FROM expenses
+            WHERE substr(date, 1, 7) BETWEEN ? AND ?
+            GROUP BY month, kind
+            ORDER BY month
+            """,
+            (start_month, end_month),
+        ).fetchall()
     finally:
         conn.close()
