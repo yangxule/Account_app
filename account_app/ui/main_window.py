@@ -7,6 +7,7 @@ from account_app.ui.budget_page import BudgetPage
 from account_app.ui.category_page import CategoryPage
 from account_app.ui.expense_form import ExpenseForm
 from account_app.ui.expense_list import ExpenseList
+from account_app.ui.snake_game import SnakePage
 from account_app.ui.stats_page import StatsPage
 
 
@@ -21,6 +22,7 @@ class MainWindow(QMainWindow):
         self.stats_page = StatsPage()
         self.category_page = CategoryPage()
         self.budget_page = BudgetPage()
+        self.snake_page = SnakePage()
 
         tabs = QTabWidget()
         tabs.addTab(self.expense_form, "记一笔")
@@ -28,6 +30,7 @@ class MainWindow(QMainWindow):
         tabs.addTab(self.stats_page, "统计")
         tabs.addTab(self.category_page, "分类设置")
         tabs.addTab(self.budget_page, "预算")
+        tabs.addTab(self.snake_page, "🎮 小游戏")
         self.setCentralWidget(tabs)
 
         # 记一笔保存后，明细页和统计页自动刷新
@@ -48,3 +51,9 @@ class MainWindow(QMainWindow):
             self.stats_page.refresh()
         elif tab is self.budget_page:
             self.budget_page.refresh()
+        # 小游戏：进入页面时获得键盘焦点并继续走；切走时暂停（蛇不会在别的页面悄悄撞死）
+        if tab is self.snake_page:
+            self.snake_page.board.setFocus()
+            self.snake_page.board.resume()
+        else:
+            self.snake_page.board.pause()
