@@ -75,3 +75,65 @@ def _seed_categories(conn: sqlite3.Connection) -> None:
                 "INSERT INTO categories (parent_id, name, sort_order) VALUES (?, ?, ?)",
                 (top_id, sub_name, j),
             )
+
+
+# ---------- 分类查询 ----------
+
+
+def get_top_categories() -> list[sqlite3.Row]:
+    """所有一级大类（按显示顺序）。"""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            "SELECT id, name FROM categories WHERE parent_id IS NULL ORDER BY sort_order"
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def get_sub_categories(top_id: int) -> list[sqlite3.Row]:
+    """某个一级大类下的所有二级小类（按显示顺序）。"""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            "SELECT id, name FROM categories WHERE parent_id = ? ORDER BY sort_order",
+            (top_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+# ---------- 账目读写 ----------
+
+
+def insert_expense(amount_cents: int, category_id: int, date: str, note: str = "") -> None:
+    """新增一笔账。amount_cents：金额（单位：分）；date：格式 YYYY-MM-DD。"""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO expenses (amount_cents, category_id, date, note) VALUES (?, ?, ?, ?)",
+            (amount_cents, category_id, date, note),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_expenses_by_date(date: str) -> list[sqlite3.Row]:
+    """某一天的全部账目（含分类名），按记录时间倒序。"""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT e.id, e.amount_cents, e.note,
+                   s.name AS sub_name, t.name AS top_name
+            FROM expenses e
+            JOIN categories s ON s.id = e.category_id
+            LEFT JOIN categories t ON t.id = s.parent_id
+            WHERE e.date = ?
+            ORDER BY e.created_at DESC, e.id DESC
+            """,
+            (date,),
+        ).fetchall()
+    finally:
+        conn.close()

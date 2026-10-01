@@ -81,3 +81,5 @@ Account 是一个运行在 Ubuntu 22.04 桌面上的个人记账App：记录每�
 | 2026-10-01 | 数据读写方式 | 直连 SQLite（sqlite3）/ SQLAlchemy | 直连 SQLite |
 | 2026-10-01 | Excel 导出库 | openpyxl / pandas | openpyxl |
 | 2026-10-01 | 代码结构 | 分层结构 / 单文件 | 分层结构（account_app 包 + ui 子包） |
+| 2026-10-01 | 金额输入方式 | 数字输入框 / 普通文本框 | 数字输入框（QDoubleSpinBox） |
+| 2026-10-01 | 记一笔页面设计 | 界面草图（表单 + 当日明细联动） | 用户确认按草图开发 |
