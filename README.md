@@ -2,6 +2,8 @@
 
 记录每一笔人民币花销的桌面记账软件，支持两级分类、统计图表、导出备份、搜索筛选、预算提醒。
 
+> 本项目基于[黑马程序员 vibe_coding 课程](https://www.bilibili.com/video/BV1RFTc62EaK/?spm_id_from=333.788.player.switch&p=15)所写出的记账 App，所有内容由 Claude Code agent 和 DeepSeek 大模型写出。
+
 ## 怎么启动（日常使用）
 
 打开终端，进入本文件夹，运行：
