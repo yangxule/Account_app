@@ -107,7 +107,7 @@ def _seed_categories(
 
 def get_top_categories(kind: str | None = None) -> list[sqlite3.Row]:
     """所有一级大类（按显示顺序）。kind 传 'expense' 或 'income' 只取一类，None 取全部。"""
-    sql = "SELECT id, name FROM categories WHERE parent_id IS NULL"
+    sql = "SELECT id, name, kind FROM categories WHERE parent_id IS NULL"
     params: list = []
     if kind is not None:
         sql += " AND kind = ?"
@@ -118,6 +118,75 @@ def get_top_categories(kind: str | None = None) -> list[sqlite3.Row]:
         return conn.execute(sql, params).fetchall()
     finally:
         conn.close()
+
+
+def add_category(parent_id: int | None, name: str, kind: str = "expense") -> int:
+    """新增分类（parent_id=None 是一级大类，否则是它下面的小类），返回新分类 id。"""
+    conn = get_connection()
+    try:
+        # sort_order 排在同级最后
+        if parent_id is None:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM categories WHERE parent_id IS NULL AND kind = ?",
+                (kind,),
+            ).fetchone()[0]
+        else:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM categories WHERE parent_id = ?", (parent_id,)
+            ).fetchone()[0]
+        cur = conn.execute(
+            "INSERT INTO categories (parent_id, name, sort_order, kind) VALUES (?, ?, ?, ?)",
+            (parent_id, name, n, kind),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def rename_category(category_id: int, name: str) -> None:
+    """给分类改名。"""
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE categories SET name = ? WHERE id = ?", (name, category_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_category_usage(category_id: int) -> sqlite3.Row:
+    """分类的使用情况：小类数量 + 直接挂在上面的账目数量（判断能否删除）。"""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM categories WHERE parent_id = ?) AS sub_count,
+                (SELECT COUNT(*) FROM expenses WHERE category_id = ?) AS expense_count
+            """,
+            (category_id, category_id),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def delete_category(category_id: int) -> str:
+    """删除分类。下面还有小类或账目时拒绝删除并返回原因；成功返回空字符串。"""
+    usage = get_category_usage(category_id)
+    if usage["sub_count"] > 0:
+        return f"该分类下还有 {usage['sub_count']} 个小类，请先删除或移走它们"
+    if usage["expense_count"] > 0:
+        return (
+            f"该分类下还有 {usage['expense_count']} 笔账目，不能删除。"
+            "请先在「明细」页把这些账目改到其他分类"
+        )
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return ""
 
 
 def get_sub_categories(top_id: int) -> list[sqlite3.Row]:

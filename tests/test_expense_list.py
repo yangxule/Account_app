@@ -221,6 +221,38 @@ def main() -> None:
         assert win.expense_list.table.rowCount() == 3
         print("  ✅ 删除正常；主窗口与页面联动正常")
 
+        # ---- 分类管理测试 ----
+        from account_app.ui.category_page import CategoryPage
+
+        top_id = db.add_category(None, "测试大类")
+        sub_id = db.add_category(top_id, "测试小类")
+        db.rename_category(sub_id, "改名小类")
+        usage = db.get_category_usage(top_id)
+        assert usage["sub_count"] == 1 and usage["expense_count"] == 0
+
+        # 有小类的大类不能删
+        err = db.delete_category(top_id)
+        assert "小类" in err
+        # 有账目的小类不能删
+        eid = db.insert_expense(100, sub_id, "2026-10-01", "分类测试账")
+        err = db.delete_category(sub_id)
+        assert "账目" in err
+        # 清空账目后可以逐级删掉
+        db.delete_expense(eid)
+        assert db.delete_category(sub_id) == ""
+        assert db.delete_category(top_id) == ""
+        print("  ✅ 分类增删改正常：有账目/小类时正确拒绝删除，清空后可删")
+
+        page_cat = CategoryPage()
+        assert page_cat.tree.topLevelItemCount() == 10  # 9 个支出大类 + 收入
+        income_item = page_cat.tree.topLevelItem(9)
+        assert income_item.text(0) == "收入" and income_item.childCount() == 6
+        page_cat.tree.setCurrentItem(page_cat.tree.topLevelItem(0))
+        assert page_cat.add_sub_btn.isEnabled()  # 选中一级：可加小类
+        page_cat.tree.setCurrentItem(page_cat.tree.topLevelItem(0).child(0))
+        assert not page_cat.add_sub_btn.isEnabled()  # 选中二级：不可加小类
+        print("  ✅ 分类设置页面正常：树加载 10 大类、收入 6 小类、按钮状态正确")
+
         print("全部测试通过 ✅")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
