@@ -14,12 +14,25 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.resize(900, 640)
+        self.resize(1000, 680)
+
+        self.expense_form = ExpenseForm()
+        self.expense_list = ExpenseList()
 
         tabs = QTabWidget()
-        tabs.addTab(ExpenseForm(), "记一笔")
-        tabs.addTab(ExpenseList(), "明细")
+        tabs.addTab(self.expense_form, "记一笔")
+        tabs.addTab(self.expense_list, "明细")
         tabs.addTab(StatsPage(), "统计")
         tabs.addTab(CategoryPage(), "分类设置")
         tabs.addTab(BudgetPage(), "预算")
         self.setCentralWidget(tabs)
+
+        # 记一笔保存后，明细页自动刷新
+        self.expense_form.saved.connect(self.expense_list.refresh)
+        # 切到明细页时也刷新一次，保证数据最新
+        tabs.currentChanged.connect(self._on_tab_changed)
+
+    def _on_tab_changed(self, index: int) -> None:
+        tab = self.centralWidget().widget(index)
+        if tab is self.expense_list:
+            self.expense_list.refresh()

@@ -1,6 +1,6 @@
 """「记一笔」页面：填写金额、分类、日期、备注，保存到数据库，并显示当日明细。"""
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -20,6 +20,9 @@ from account_app import db
 
 
 class ExpenseForm(QWidget):
+    # 保存成功后发出，供其他页面（如明细页）刷新
+    saved = Signal()
+
     def __init__(self):
         super().__init__()
         self._build_ui()
@@ -132,6 +135,7 @@ class ExpenseForm(QWidget):
         self.note_input.clear()
         self.amount_input.setFocus()
         self._refresh_list()
+        self.saved.emit()  # 通知明细页等刷新
 
     def _show_feedback(self, text: str, ok: bool = True) -> None:
         self.feedback.setStyleSheet("color: #2e7d32;" if ok else "color: #c62828;")

@@ -106,15 +106,16 @@ def get_sub_categories(top_id: int) -> list[sqlite3.Row]:
 # ---------- 账目读写 ----------
 
 
-def insert_expense(amount_cents: int, category_id: int, date: str, note: str = "") -> None:
-    """新增一笔账。amount_cents：金额（单位：分）；date：格式 YYYY-MM-DD。"""
+def insert_expense(amount_cents: int, category_id: int, date: str, note: str = "") -> int:
+    """新增一笔账，返回新账目的 id。amount_cents：金额（单位：分）；date：格式 YYYY-MM-DD。"""
     conn = get_connection()
     try:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO expenses (amount_cents, category_id, date, note) VALUES (?, ?, ?, ?)",
             (amount_cents, category_id, date, note),
         )
         conn.commit()
+        return cur.lastrowid
     finally:
         conn.close()
 
@@ -135,5 +136,100 @@ def get_expenses_by_date(date: str) -> list[sqlite3.Row]:
             """,
             (date,),
         ).fetchall()
+    finally:
+        conn.close()
+
+
+def search_expenses(
+    keyword: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    top_id: int | None = None,
+    sub_id: int | None = None,
+    min_cents: int | None = None,
+    max_cents: int | None = None,
+) -> list[sqlite3.Row]:
+    """按条件搜索账目，按日期倒序。空条件 = 不过滤。"""
+    sql = """
+        SELECT e.id, e.date, e.amount_cents, e.note,
+               s.name AS sub_name, t.name AS top_name
+        FROM expenses e
+        JOIN categories s ON s.id = e.category_id
+        LEFT JOIN categories t ON t.id = s.parent_id
+        WHERE 1=1
+    """
+    params: list = []
+    if keyword:
+        like = f"%{keyword}%"
+        sql += " AND (e.note LIKE ? OR s.name LIKE ? OR t.name LIKE ?)"
+        params += [like, like, like]
+    if date_from:
+        sql += " AND e.date >= ?"
+        params.append(date_from)
+    if date_to:
+        sql += " AND e.date <= ?"
+        params.append(date_to)
+    if sub_id is not None:
+        sql += " AND e.category_id = ?"
+        params.append(sub_id)
+    elif top_id is not None:
+        sql += " AND s.parent_id = ?"
+        params.append(top_id)
+    if min_cents is not None:
+        sql += " AND e.amount_cents >= ?"
+        params.append(min_cents)
+    if max_cents is not None:
+        sql += " AND e.amount_cents <= ?"
+        params.append(max_cents)
+    sql += " ORDER BY e.date DESC, e.created_at DESC, e.id DESC"
+    conn = get_connection()
+    try:
+        return conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+
+
+def get_expense(expense_id: int) -> sqlite3.Row:
+    """取一笔账（编辑时用来回填表单）。"""
+    conn = get_connection()
+    try:
+        return conn.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+    finally:
+        conn.close()
+
+
+def get_parent_id(category_id: int) -> int | None:
+    """查一个分类的上级大类 id（一级分类返回 None）。"""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT parent_id FROM categories WHERE id = ?", (category_id,)
+        ).fetchone()
+        return row["parent_id"] if row else None
+    finally:
+        conn.close()
+
+
+def update_expense(
+    expense_id: int, amount_cents: int, category_id: int, date: str, note: str = ""
+) -> None:
+    """修改一笔账。"""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE expenses SET amount_cents = ?, category_id = ?, date = ?, note = ? WHERE id = ?",
+            (amount_cents, category_id, date, note, expense_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_expense(expense_id: int) -> None:
+    """删除一笔账。"""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+        conn.commit()
     finally:
         conn.close()
