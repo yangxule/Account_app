@@ -16,3 +16,13 @@
 
 - Ubuntu 22.04 + Python（conda 环境 `vibe_coding_learning`）
 - PySide6（桌面界面）+ SQLite（数据存储）+ matplotlib（图表）+ openpyxl（Excel 导出）
+
+## 常见问题
+
+**启动报错 `qt.qpa.plugin: ... libxcb-cursor0 is needed ...`**
+
+Ubuntu 22.04 默认缺少 Qt6 需要的鼠标光标库，安装一次即可：
+
+```bash
+sudo apt install -y libxcb-cursor0
+```

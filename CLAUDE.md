@@ -11,6 +11,7 @@ Account 是一个运行在 Ubuntu 22.04 桌面上的个人记账App：记录每�
 
 - 操作系统：Ubuntu 22.04
 - 语言：Python，conda 环境 `vibe_coding_learning`
+- 系统依赖：Ubuntu 22.04 需手动安装 `libxcb-cursor0`（`sudo apt install -y libxcb-cursor0`），否则 Qt6 无法启动窗口
 - 技术栈：PySide6（Qt6 桌面界面）+ SQLite 数据库
 - SQLite 说明：数据存在本机一个文件里，无需安装数据库服务器，简单可靠（随技术栈方案一并确认）
 
@@ -77,9 +78,3 @@ Account 是一个运行在 Ubuntu 22.04 桌面上的个人记账App：记录每�
 | 2026-10-01 | 附加功能 | 图表统计 / 导出备份 / 搜索筛选 / 预算提醒 | 全部 4 项 |
 | 2026-10-01 | 分类体系 | 9 大类两级分类树 | 采用默认设计 |
 | 2026-10-01 | 数据存储 | SQLite（随技术栈方案确认） | SQLite |
-| 2026-10-01 | 图表库 | matplotlib / pyqtgraph / QtCharts | matplotlib |
-| 2026-10-01 | 数据读写方式 | 直连 SQLite（sqlite3）/ SQLAlchemy | 直连 SQLite |
-| 2026-10-01 | Excel 导出库 | openpyxl / pandas | openpyxl |
-| 2026-10-01 | 代码结构 | 分层结构 / 单文件 | 分层结构（account_app 包 + ui 子包） |
-| 2026-10-01 | 金额输入方式 | 数字输入框 / 普通文本框 | 数字输入框（QDoubleSpinBox） |
-| 2026-10-01 | 记一笔页面设计 | 界面草图（表单 + 当日明细联动） | 用户确认按草图开发 |
